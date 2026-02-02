@@ -1,13 +1,12 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
     namespace = "com.bobby.upitracker"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.bobby.upitracker"
@@ -46,6 +45,24 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    
+    // Material Icons Extended
+    implementation("androidx.compose.material:material-icons-extended:1.7.6")
+    
+    // Room Database
+    implementation("androidx.room:room-runtime:2.7.0-alpha12")
+    implementation("androidx.room:room-ktx:2.7.0-alpha12")
+    ksp("androidx.room:room-compiler:2.7.0-alpha12")
+    
+    // Razorpay SDK
+    implementation("com.razorpay:checkout:1.6.38")
+    
+    // Navigation for Compose
+    implementation("androidx.navigation:navigation-compose:2.8.5")
+    
+    // ViewModel Compose
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+    
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
