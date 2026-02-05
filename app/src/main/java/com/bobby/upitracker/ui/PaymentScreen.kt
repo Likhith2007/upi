@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -27,12 +28,15 @@ fun PaymentScreen(
     onVerifyClick: (String) -> Unit,
     onPayClick: (String, Double) -> Unit,
     onBackClick: () -> Unit,
+    initialIdentifier: String = "",
+    initialAmount: String = "",
     modifier: Modifier = Modifier
 ) {
-    var selectedMethod by remember { mutableStateOf(PaymentMethod.MOBILE) }
-    var receiverIdentifier by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
-    var showError by remember { mutableStateOf(false) }
+    var selectedMethod by rememberSaveable { mutableStateOf(PaymentMethod.MOBILE) }
+    var receiverIdentifier by rememberSaveable { mutableStateOf(initialIdentifier) }
+    var amount by rememberSaveable { mutableStateOf(initialAmount) }
+    var showError by rememberSaveable { mutableStateOf(false) }
+    var isVerifying by remember { mutableStateOf(false) }
     
     Scaffold(
         topBar = {
@@ -182,17 +186,27 @@ fun PaymentScreen(
             OutlinedButton(
                 onClick = {
                     if (isValidInput(selectedMethod, receiverIdentifier)) {
+                        isVerifying = true
                         onVerifyClick(receiverIdentifier)
                     } else {
                         showError = true
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = receiverIdentifier.isNotEmpty()
+                enabled = receiverIdentifier.isNotEmpty() && !isVerifying
             ) {
-                Icon(Icons.Default.VerifiedUser, null, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Verify Receiver (Fraud Check)")
+                if (isVerifying) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Verifying...")
+                } else {
+                    Icon(Icons.Default.VerifiedUser, null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Verify Receiver (Fraud Check)")
+                }
             }
             
             // Pay Button

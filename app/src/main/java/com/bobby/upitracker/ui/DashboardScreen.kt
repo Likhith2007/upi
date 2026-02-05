@@ -1,5 +1,7 @@
 package com.bobby.upitracker.ui
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bobby.upitracker.data.UpiTransaction
+import com.bobby.upitracker.ui.UpiAppLogos
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -22,15 +25,49 @@ fun DashboardScreen(
     uiState: DashboardUiState,
     onPaymentClick: () -> Unit,
     onRefreshClick: () -> Unit,
+    onHistoryClick: () -> Unit = {},
+    onSafetyResourcesClick: () -> Unit = {},
+    onImageVerificationClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val currencyFormat = NumberFormat.getCurrencyInstance(Locale("en", "IN"))
+    var showMenu by remember { mutableStateOf(false) }
     
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("UPI Money Tracker") },
+                navigationIcon = {
+                    // Hamburger menu icon (three lines)
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.Menu, contentDescription = "Menu")
+                    }
+                    
+                    // Dropdown menu
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("🛡️ Safety Resources") },
+                            onClick = {
+                                showMenu = false
+                                onSafetyResourcesClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("🔍 Verify Profile Photo") },
+                            onClick = {
+                                showMenu = false
+                                onImageVerificationClick()
+                            }
+                        )
+                    }
+                },
                 actions = {
+                    IconButton(onClick = onHistoryClick) {
+                        Icon(Icons.Default.History, "Transaction History")
+                    }
                     IconButton(onClick = onRefreshClick) {
                         Icon(Icons.Default.Refresh, "Refresh")
                     }
@@ -217,6 +254,7 @@ fun TransactionItem(
     currencyFormat: NumberFormat
 ) {
     val dateFormat = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault())
+    val context = androidx.compose.ui.platform.LocalContext.current
     
     Card(
         modifier = Modifier.fillMaxWidth()
@@ -225,7 +263,8 @@ fun TransactionItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
                 modifier = Modifier.weight(1f),
@@ -247,12 +286,34 @@ fun TransactionItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Text(
-                currencyFormat.format(transaction.amount),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    currencyFormat.format(transaction.amount),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                
+                // Clickable UPI App Logo
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(
+                        id = UpiAppLogos.getLogoResource(transaction.platform)
+                    ),
+                    contentDescription = "Open ${transaction.platform}",
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clickable {
+                            com.bobby.upitracker.utils.UpiAppLauncher.launchApp(
+                                context,
+                                transaction.platform
+                            )
+                        }
+                )
+            }
         }
     }
 }

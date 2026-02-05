@@ -12,9 +12,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         UpiTransaction::class, 
         PaymentTransaction::class,
         User::class,
-        SavedReceiver::class
+        SavedReceiver::class,
+        BankTransaction::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,6 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun paymentTransactionDao(): PaymentTransactionDao
     abstract fun userDao(): UserDao
     abstract fun savedReceiverDao(): SavedReceiverDao
+    abstract fun bankTransactionDao(): BankTransactionDao
     
     companion object {
         @Volatile
@@ -59,6 +61,26 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
         
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Create bank_transactions table
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS bank_transactions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        type TEXT NOT NULL,
+                        amount REAL NOT NULL,
+                        balance REAL,
+                        bankName TEXT NOT NULL,
+                        accountNumber TEXT NOT NULL,
+                        referenceNumber TEXT,
+                        timestamp INTEGER NOT NULL,
+                        description TEXT,
+                        rawMessage TEXT NOT NULL
+                    )
+                """.trimIndent())
+            }
+        }
+        
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -66,7 +88,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "upi_tracker_database"
                 )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

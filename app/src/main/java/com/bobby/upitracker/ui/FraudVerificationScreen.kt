@@ -2,6 +2,9 @@ package com.bobby.upitracker.ui
 
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -224,15 +227,21 @@ fun FraudVerificationScreen(
                     .weight(0.5f)
             ) {
                 AndroidView(
-                    factory = { ctx ->
-                        WebView(ctx).apply {
+                    factory = { context ->
+                        WebView(context).apply {
                             webView = this
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.loadWithOverviewMode = true
-                            settings.useWideViewPort = true
-                            settings.builtInZoomControls = true
-                            settings.displayZoomControls = false
+                            settings.apply {
+                                javaScriptEnabled = true
+                                domStorageEnabled = true
+                                loadWithOverviewMode = true
+                                useWideViewPort = true
+                                builtInZoomControls = true
+                                displayZoomControls = false
+                                setSupportZoom(true)
+                                cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
+                            }
+                            
+                            webChromeClient = WebChromeClient()
                             
                             webViewClient = object : WebViewClient() {
                                 override fun onPageFinished(view: WebView?, url: String?) {
@@ -273,6 +282,20 @@ fun FraudVerificationScreen(
                                     if (checkingResults) {
                                         view?.let { monitorResults(it, onVerificationComplete, context) }
                                     }
+                                }
+                                
+                                override fun onReceivedError(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                    error: WebResourceError?
+                                ) {
+                                    super.onReceivedError(view, request, error)
+                                    isLoading = false
+                                    Toast.makeText(
+                                        context,
+                                        "Error loading page. Please check your internet connection.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                 }
                             }
                             

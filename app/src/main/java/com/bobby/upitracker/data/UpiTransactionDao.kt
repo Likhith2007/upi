@@ -2,16 +2,15 @@ package com.bobby.upitracker.data
 
 import androidx.room.Dao
 import androidx.room.Insert
-import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface UpiTransactionDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert
     suspend fun insert(transaction: UpiTransaction)
     
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert
     suspend fun insertAll(transactions: List<UpiTransaction>)
     
     @Query("SELECT * FROM upi_transactions ORDER BY timestamp DESC")
@@ -25,6 +24,9 @@ interface UpiTransactionDao {
     
     @Query("SELECT * FROM upi_transactions WHERE platform = :platform ORDER BY timestamp DESC")
     fun getTransactionsByPlatform(platform: String): Flow<List<UpiTransaction>>
+
+    @Query("SELECT * FROM upi_transactions WHERE amount = :amount AND sender = :sender AND timestamp BETWEEN :timestamp - 5000 AND :timestamp + 5000 LIMIT 1")
+    suspend fun findSimilarTransaction(amount: Double, sender: String, timestamp: Long): UpiTransaction?
     
     @Query("DELETE FROM upi_transactions")
     suspend fun deleteAll()

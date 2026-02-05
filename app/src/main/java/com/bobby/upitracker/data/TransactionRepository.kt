@@ -25,4 +25,8 @@ class TransactionRepository(private val dao: UpiTransactionDao) {
     fun getTransactionsByPlatform(platform: String): Flow<List<UpiTransaction>> {
         return dao.getTransactionsByPlatform(platform)
     }
+    
+    suspend fun findSimilarTransaction(amount: Double, sender: String, timestamp: Long): UpiTransaction? {
+        return dao.findSimilarTransaction(amount, sender, timestamp)
+    }
 }

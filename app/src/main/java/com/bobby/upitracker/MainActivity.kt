@@ -27,12 +27,21 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.bobby.upitracker.data.AppDatabase
 import com.bobby.upitracker.data.TransactionRepository
+import com.bobby.upitracker.data.User
+import com.bobby.upitracker.data.UserDao
+import com.bobby.upitracker.data.SavedReceiverDao
+import com.bobby.upitracker.data.BankTransactionDao
 import com.bobby.upitracker.domain.SmsReader
 import com.bobby.upitracker.fraud.FraudVerificationRepository
 import com.bobby.upitracker.ui.DashboardScreen
 import com.bobby.upitracker.ui.FraudVerificationScreen
 import com.bobby.upitracker.ui.HomeViewModel
+import com.bobby.upitracker.ui.ImageVerificationScreen
+import com.bobby.upitracker.ui.LoginScreen
 import com.bobby.upitracker.ui.PaymentScreen
+import com.bobby.upitracker.ui.SafetyResourcesScreen
+import com.bobby.upitracker.ui.InternalWebViewScreen
+import com.bobby.upitracker.ui.TransactionHistoryScreen
 import com.bobby.upitracker.ui.theme.UPIMoneyTrackerTheme
 import com.razorpay.PaymentResultListener
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +61,7 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
         val transactionRepository = TransactionRepository(database.upiTransactionDao())
         val userDao = database.userDao()
         val savedReceiverDao = database.savedReceiverDao()
+        val bankTransactionDao = database.bankTransactionDao()
         
         setContent {
             UPIMoneyTrackerTheme {
@@ -64,6 +74,7 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
                         fraudRepository = fraudRepository,
                         userDao = userDao,
                         savedReceiverDao = savedReceiverDao,
+                        bankTransactionDao = bankTransactionDao,
                         onScanSms = { scanSmsMessages(transactionRepository) }
                     )
                 }
@@ -78,11 +89,28 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
                 val transactions = withContext(Dispatchers.IO) {
                     smsReader.readTransactionSms()
                 }
-                repository.insertTransactions(transactions)
+                
+                // Filter out duplicates before inserting
+                var newCount = 0
+                withContext(Dispatchers.IO) {
+                    transactions.forEach { transaction ->
+                        // Check if similar transaction already exists
+                        val existing = repository.findSimilarTransaction(
+                            transaction.amount,
+                            transaction.sender,
+                            transaction.timestamp
+                        )
+                        if (existing == null) {
+                            repository.insertTransaction(transaction)
+                            newCount++
+                        }
+                    }
+                }
+                
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         this@MainActivity,
-                        "Found ${transactions.size} transactions",
+                        if (newCount > 0) "Added $newCount new transactions" else "No new transactions found",
                         Toast.LENGTH_SHORT
                     ).show()
                 }
@@ -114,6 +142,7 @@ fun UpiTrackerApp(
     fraudRepository: FraudVerificationRepository,
     userDao: UserDao,
     savedReceiverDao: SavedReceiverDao,
+    bankTransactionDao: BankTransactionDao,
     onScanSms: () -> Unit
 ) {
     val navController = rememberNavController()
@@ -235,6 +264,9 @@ fun UpiTrackerApp(
             DashboardScreen(
                 uiState = uiState,
                 onPaymentClick = { navController.navigate("payment") },
+                onHistoryClick = { navController.navigate("transaction_history") },
+                onSafetyResourcesClick = { navController.navigate("safety_resources") },
+                onImageVerificationClick = { navController.navigate("image_verification") },
                 onRefreshClick = { 
                     if (uiState.hasSmsPermission) {
                         onScanSms()
@@ -250,11 +282,39 @@ fun UpiTrackerApp(
             val activity = context as? MainActivity
             
             PaymentScreen(
-                onVerifyClick = { mobileNumber ->
-                    navController.navigate("fraud_verification/$mobileNumber")
+                initialIdentifier = savedReceiverIdentifier,
+                initialAmount = savedAmount,
+                onVerifyClick = { identifier ->
+                    // Save the data before navigating
+                    savedReceiverIdentifier = identifier
+                    navController.navigate("fraud_verification/$identifier")
                 },
                 onPayClick = { receiverIdentifier, amount ->
+                    // Save the data
+                    savedReceiverIdentifier = receiverIdentifier
+                    savedAmount = amount.toString()
+                    
                     if (activity != null) {
+                        // Save receiver to database for future use
+                        kotlinx.coroutines.GlobalScope.launch {
+                            val existing = savedReceiverDao.getReceiverByIdentifier(receiverIdentifier)
+                            if (existing != null) {
+                                savedReceiverDao.updateLastUsed(
+                                    receiverIdentifier,
+                                    amount,
+                                    System.currentTimeMillis()
+                                )
+                            } else {
+                                savedReceiverDao.insertReceiver(
+                                    com.bobby.upitracker.data.SavedReceiver(
+                                        identifier = receiverIdentifier,
+                                        identifierType = "MOBILE",
+                                        lastUsedAmount = amount
+                                    )
+                                )
+                            }
+                        }
+                        
                         // Initialize Razorpay and start payment
                         val razorpayManager = com.bobby.upitracker.payment.RazorpayManager(
                             activity = activity,
@@ -275,7 +335,12 @@ fun UpiTrackerApp(
                         ).show()
                     }
                 },
-                onBackClick = { navController.popBackStack() }
+                onBackClick = { 
+                    // Clear saved data when going back to dashboard
+                    savedReceiverIdentifier = ""
+                    savedAmount = ""
+                    navController.popBackStack()
+                }
             )
         }
         
@@ -297,6 +362,55 @@ fun UpiTrackerApp(
                     showFraudResultDialog = true
                     navController.popBackStack()
                 }
+            )
+        }
+        
+        // Transaction History Screen
+        composable("transaction_history") {
+            val bankTransactions by bankTransactionDao.getAllTransactions().collectAsState(initial = emptyList())
+            
+            TransactionHistoryScreen(
+                transactions = bankTransactions,
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+        
+        // Safety Resources Screen
+        composable("safety_resources") {
+            SafetyResourcesScreen(
+                onBackClick = { navController.popBackStack() }
+            )
+        }
+        
+        // Image Verification Screen
+        composable("image_verification") {
+            ImageVerificationScreen(
+                onBackClick = { navController.popBackStack() },
+                onBrowserClick = { url, title -> 
+                    // Query params handle special characters better
+                    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+                    val encodedTitle = java.net.URLEncoder.encode(title, "UTF-8")
+                    navController.navigate("webview?url=$encodedUrl&title=$encodedTitle") 
+                }
+            )
+        }
+        
+        // Generic WebView Screen
+        // Generic WebView Screen
+        composable(
+            "webview?url={url}&title={title}",
+            arguments = listOf(
+                navArgument("url") { type = NavType.StringType },
+                navArgument("title") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val url = backStackEntry.arguments?.getString("url") ?: ""
+            val title = backStackEntry.arguments?.getString("title") ?: "Browser"
+            
+            InternalWebViewScreen(
+                url = url, // Query params are automatically decoded by Navigation Compose
+                title = title,
+                onBackClick = { navController.popBackStack() }
             )
         }
     }
